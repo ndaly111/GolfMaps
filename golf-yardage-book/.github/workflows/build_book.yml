@@ -1,0 +1,105 @@
+name: Build Yardage Book
+
+on:
+  workflow_dispatch:
+    inputs:
+      place:
+        description: "Place name to geocode"
+        required: false
+        type: string
+      course:
+        description: "Course display name"
+        required: true
+        type: string
+      paper:
+        description: "Paper preset"
+        required: true
+        default: "pocket"
+        type: choice
+        options:
+          - pocket
+          - legal
+          - letter
+      tee_set:
+        description: "Tee set (back/middle/front)"
+        required: false
+        default: "back"
+        type: choice
+        options:
+          - back
+          - middle
+          - front
+      tee_label:
+        description: "Tee label substring"
+        required: false
+        type: string
+      tee_index:
+        description: "Tee index (1-based)"
+        required: false
+        type: string
+      buffer_m:
+        description: "Buffer meters"
+        required: false
+        type: string
+      lat:
+        description: "Latitude fallback"
+        required: false
+        type: string
+      lon:
+        description: "Longitude fallback"
+        required: false
+        type: string
+      radius:
+        description: "Radius meters fallback"
+        required: false
+        type: string
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mamba-org/setup-micromamba@v1
+        with:
+          environment-file: environment.yml
+          init-shell: bash
+          cache-environment: true
+      - name: Install package
+        shell: bash -l {0}
+        run: |
+          pip install -e .
+      - name: Build yardage book
+        shell: bash -l {0}
+        run: |
+          mkdir -p outputs
+          ARGS=(build --course "${{ inputs.course }}" --paper "${{ inputs.paper }}" --output outputs/book.pdf)
+          if [ -n "${{ inputs.place }}" ]; then
+            ARGS+=(--place "${{ inputs.place }}")
+          fi
+          if [ -n "${{ inputs.lat }}" ]; then
+            ARGS+=(--lat "${{ inputs.lat }}")
+          fi
+          if [ -n "${{ inputs.lon }}" ]; then
+            ARGS+=(--lon "${{ inputs.lon }}")
+          fi
+          if [ -n "${{ inputs.radius }}" ]; then
+            ARGS+=(--radius "${{ inputs.radius }}")
+          fi
+          if [ -n "${{ inputs.buffer_m }}" ]; then
+            ARGS+=(--buffer-m "${{ inputs.buffer_m }}")
+          fi
+          if [ -n "${{ inputs.tee_set }}" ]; then
+            ARGS+=(--tee-set "${{ inputs.tee_set }}")
+          fi
+          if [ -n "${{ inputs.tee_label }}" ]; then
+            ARGS+=(--tee-label "${{ inputs.tee_label }}")
+          fi
+          if [ -n "${{ inputs.tee_index }}" ]; then
+            ARGS+=(--tee-index "${{ inputs.tee_index }}")
+          fi
+          yardagebook "${ARGS[@]}"
+      - name: Upload PDF
+        uses: actions/upload-artifact@v4
+        with:
+          name: yardage-book
+          path: outputs/book.pdf

@@ -1,0 +1,7 @@
+geopandas
+shapely
+pyproj
+matplotlib
+pyyaml
+osmnx
+requests

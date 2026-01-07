@@ -1,0 +1,9 @@
+name: yardagebook
+dependencies:
+  - python=3.10
+  - geopandas
+  - shapely
+  - pyproj
+  - matplotlib
+  - pyyaml
+  - osmnx
