@@ -1,0 +1,20 @@
+[project]
+name = "golf-yardage-book"
+version = "0.1.0"
+description = "Generate printable golf yardage books from GeoJSON"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = ["geopandas", "shapely", "pyproj", "matplotlib", "pyyaml", "osmnx"]
+
+[project.scripts]
+yardagebook = "yardagebook.cli:main"
+
+[tool.setuptools]
+packages = ["yardagebook"]
+
+[tool.setuptools.package-data]
+yardagebook = ["configs/*.yml"]
+
+[build-system]
+requires = ["setuptools>=65", "wheel"]
+build-backend = "setuptools.build_meta"
