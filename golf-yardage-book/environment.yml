@@ -1,0 +1,12 @@
+name: yardagebook
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+  - geopandas
+  - shapely
+  - pyproj
+  - matplotlib
+  - pyyaml
+  - osmnx
+  - pip

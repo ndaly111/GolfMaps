@@ -1,0 +1,37 @@
+page:
+  paper: "pocket"
+  pocket_size: [3.5, 5.0]
+  legal_size: [14.0, 8.5]
+  letter_size: [8.5, 11.0]
+  margin_in: 0.15
+  gutter_in: 0.15
+  title_size: 14
+  header_size: 8
+  body_size: 6
+  marker_font_size: 7
+colors:
+  fairway: "#cfe9c8"
+  green: "#9fd79f"
+  tee: "#d1c4b2"
+  bunker: "#e6d2a8"
+  water: "#b0d7f2"
+  line: "#2f2f2f"
+  grid: "#b7b7b7"
+  marker: "#1f1f1f"
+tolerances:
+  tee_radius_m: 120
+  fairway_tol_m: 60
+  fairway_proxy_halfwidth_m: 25
+  hazard_tol_m: 80
+  green_proxy_radius_m: 18
+  tee_proxy_radius_m: 12
+  green_margin_m: 18
+  fairway_margin_m: 35
+  two_up: false
+  duplex: true
+  marker_step_yards: 50
+  grid_step_yards: 5
+  yardage_round: 0
+  tee_set: "back"
+  tee_label: null
+  tee_index: null

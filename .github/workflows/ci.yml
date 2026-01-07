@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+
+defaults:
+  run:
+    working-directory: golf-yardage-book
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mamba-org/setup-micromamba@v1
+        with:
+          environment-file: golf-yardage-book/environment.yml
+          init-shell: bash
+          cache-environment: true
+      - name: Install package
+        shell: bash -l {0}
+        run: |
+          pip install -e .
+      - name: Import CLI
+        shell: bash -l {0}
+        run: |
+          python -c "import yardagebook.cli; print('ok')"
+      - name: CLI help
+        shell: bash -l {0}
+        run: |
+          yardagebook --help
+      - name: Run smoke test
+        shell: bash -l {0}
+        run: |
+          python scripts/smoke_test.py
