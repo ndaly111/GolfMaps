@@ -5,3 +5,7 @@ matplotlib
 pyyaml
 osmnx
 requests
+fastapi
+uvicorn
+python-multipart
+jinja2

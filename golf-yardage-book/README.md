@@ -34,6 +34,33 @@ mamba activate yardagebook
 
 Or use the provided `environment.yml` with micromamba/conda for reproducible installs.
 
+## Web UI
+
+Install dependencies (pip):
+
+```bash
+cd golf-yardage-book
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+pip install -e .
+```
+
+Install dependencies (conda):
+
+```bash
+conda env create -f environment.yml
+conda activate yardagebook
+```
+
+Run the web app:
+
+```bash
+uvicorn webapp.main:app --reload --port 8000
+```
+
+Open http://localhost:8000 in a browser.
+
 ## Usage
 
 ```bash

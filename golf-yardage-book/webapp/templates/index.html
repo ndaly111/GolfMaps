@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Golf Yardage Book Builder</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      }
+      body {
+        margin: 0;
+        background: #f6f6f6;
+        color: #1d1d1f;
+      }
+      .container {
+        max-width: 760px;
+        margin: 32px auto;
+        background: #ffffff;
+        padding: 28px 32px;
+        border-radius: 12px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+      }
+      h1 {
+        margin-top: 0;
+        font-size: 24px;
+      }
+      p.helper {
+        margin: 8px 0 20px;
+        color: #555;
+      }
+      form {
+        display: grid;
+        gap: 16px;
+      }
+      .grid {
+        display: grid;
+        gap: 16px;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      }
+      label {
+        display: block;
+        font-weight: 600;
+        margin-bottom: 6px;
+      }
+      input,
+      select {
+        width: 100%;
+        padding: 8px 10px;
+        border-radius: 8px;
+        border: 1px solid #ccc;
+        font-size: 14px;
+      }
+      .error-box {
+        background: #fde8e8;
+        border: 1px solid #f5c2c2;
+        border-radius: 10px;
+        padding: 12px 14px;
+        color: #a11a1a;
+      }
+      .error-box ul {
+        margin: 6px 0 0 16px;
+      }
+      .actions {
+        display: flex;
+        justify-content: flex-end;
+      }
+      button {
+        border: none;
+        background: #2274ff;
+        color: white;
+        padding: 10px 18px;
+        border-radius: 8px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button:hover {
+        background: #1b5bd6;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="container">
+      <h1>Golf Yardage Book Builder</h1>
+      <p class="helper">Provide place OR lat/lon/radius.</p>
+
+      {% if errors %}
+      <div class="error-box">
+        <strong>We couldn&apos;t build your PDF:</strong>
+        <ul>
+          {% for error in errors %}
+          <li>{{ error }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+
+      <form method="post" action="/build">
+        <div>
+          <label for="place">Place</label>
+          <input id="place" name="place" placeholder="Forest Park Golf Course, Baltimore, MD" value="{{ values.get('place', '') }}" />
+        </div>
+
+        <div class="grid">
+          <div>
+            <label for="lat">Latitude</label>
+            <input id="lat" name="lat" placeholder="39.329" value="{{ values.get('lat', '') }}" />
+          </div>
+          <div>
+            <label for="lon">Longitude</label>
+            <input id="lon" name="lon" placeholder="-76.668" value="{{ values.get('lon', '') }}" />
+          </div>
+          <div>
+            <label for="radius">Radius (m)</label>
+            <input id="radius" name="radius" placeholder="1200" value="{{ values.get('radius', '') }}" />
+          </div>
+        </div>
+
+        <div class="grid">
+          <div>
+            <label for="course">Course name</label>
+            <input id="course" name="course" placeholder="Forest Park" value="{{ values.get('course', '') }}" />
+          </div>
+          <div>
+            <label for="paper">Paper</label>
+            <select id="paper" name="paper">
+              {% for option in paper_options %}
+              <option value="{{ option }}" {% if values.get('paper', 'pocket') == option %}selected{% endif %}>
+                {{ option|capitalize }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label for="buffer_m">Buffer (m, optional)</label>
+            <input id="buffer_m" name="buffer_m" placeholder="1200" value="{{ values.get('buffer_m', '') }}" />
+          </div>
+        </div>
+
+        <div class="grid">
+          <div>
+            <label for="tee_set">Tee set</label>
+            <input id="tee_set" name="tee_set" placeholder="back" value="{{ values.get('tee_set', 'back') }}" />
+          </div>
+          <div>
+            <label for="tee_label">Tee label (optional)</label>
+            <input id="tee_label" name="tee_label" placeholder="Blue" value="{{ values.get('tee_label', '') }}" />
+          </div>
+          <div>
+            <label for="tee_index">Tee index (optional)</label>
+            <input id="tee_index" name="tee_index" placeholder="0" value="{{ values.get('tee_index', '') }}" />
+          </div>
+        </div>
+
+        <div class="actions">
+          <button type="submit">Build PDF</button>
+        </div>
+      </form>
+    </main>
+  </body>
+</html>
