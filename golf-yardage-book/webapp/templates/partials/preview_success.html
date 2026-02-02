@@ -1,0 +1,25 @@
+<div class="preview-content">
+  <h3>Course Found - {{ hole_count }} Holes</h3>
+  <table class="tee-table">
+    <thead>
+      <tr>
+        <th>Hole</th>
+        <th>Selected Tee</th>
+        <th>All Tees (yards)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for line in tee_lines %}
+      {% set parts = line.split('] ') %}
+      {% set hole_part = parts[0].replace('Hole ', '').split(' [') %}
+      <tr>
+        <td>{{ hole_part[0] }}</td>
+        <td><strong>{{ hole_part[1] if hole_part|length > 1 else 'Back' }}</strong></td>
+        <td>{{ parts[1] if parts|length > 1 else line }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <input type="hidden" name="cache_id" value="{{ cache_id }}" />
+  <p class="success-msg">Ready to build! Select your options below.</p>
+</div>

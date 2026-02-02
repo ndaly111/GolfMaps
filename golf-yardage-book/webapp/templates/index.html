@@ -3,6 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <title>Golf Yardage Book Builder</title>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <style>
       :root {
         color-scheme: light;
@@ -25,6 +26,13 @@
         margin-top: 0;
         font-size: 24px;
       }
+      h2 {
+        font-size: 18px;
+        margin: 24px 0 12px;
+        color: #333;
+        border-bottom: 2px solid #2274ff;
+        padding-bottom: 6px;
+      }
       p.helper {
         margin: 8px 0 20px;
         color: #555;
@@ -46,10 +54,16 @@
       input,
       select {
         width: 100%;
-        padding: 8px 10px;
+        padding: 10px 12px;
         border-radius: 8px;
         border: 1px solid #ccc;
         font-size: 14px;
+        box-sizing: border-box;
+      }
+      input:focus, select:focus {
+        outline: none;
+        border-color: #2274ff;
+        box-shadow: 0 0 0 3px rgba(34, 116, 255, 0.15);
       }
       .error-box {
         background: #fde8e8;
@@ -63,26 +77,163 @@
       }
       .actions {
         display: flex;
+        gap: 12px;
         justify-content: flex-end;
+        margin-top: 8px;
       }
       button {
         border: none;
         background: #2274ff;
         color: white;
-        padding: 10px 18px;
+        padding: 12px 20px;
         border-radius: 8px;
         font-weight: 600;
         cursor: pointer;
+        font-size: 14px;
       }
       button:hover {
         background: #1b5bd6;
+      }
+      button:disabled {
+        background: #ccc;
+        cursor: not-allowed;
+      }
+      button.secondary {
+        background: #6c757d;
+      }
+      button.secondary:hover {
+        background: #545b62;
+      }
+
+      /* Search dropdown */
+      .search-container {
+        position: relative;
+      }
+      .search-dropdown {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: white;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        list-style: none;
+        margin: 4px 0 0;
+        padding: 0;
+        z-index: 100;
+        max-height: 300px;
+        overflow-y: auto;
+      }
+      .search-dropdown li {
+        padding: 12px 14px;
+        cursor: pointer;
+        border-bottom: 1px solid #eee;
+      }
+      .search-dropdown li:last-child {
+        border-bottom: none;
+      }
+      .search-dropdown li:hover {
+        background: #f0f7ff;
+      }
+      .no-results {
+        padding: 12px 14px;
+        color: #666;
+        font-style: italic;
+      }
+
+      /* Preview section */
+      #preview-result {
+        margin-top: 16px;
+      }
+      .preview-content {
+        background: #e8f5e9;
+        border: 1px solid #a5d6a7;
+        border-radius: 10px;
+        padding: 16px;
+      }
+      .preview-content h3 {
+        margin-top: 0;
+        color: #2e7d32;
+      }
+      .tee-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 12px 0;
+        font-size: 13px;
+      }
+      .tee-table th, .tee-table td {
+        padding: 8px 10px;
+        text-align: left;
+        border-bottom: 1px solid #c8e6c9;
+      }
+      .tee-table th {
+        background: #c8e6c9;
+        font-weight: 600;
+      }
+      .tee-table tr:hover {
+        background: #f1f8e9;
+      }
+      .success-msg {
+        color: #2e7d32;
+        font-weight: 500;
+        margin-bottom: 0;
+      }
+      .preview-error {
+        background: #fde8e8;
+        border: 1px solid #f5c2c2;
+        border-radius: 10px;
+        padding: 16px;
+        color: #a11a1a;
+      }
+
+      /* Loading indicator */
+      .htmx-indicator {
+        display: none;
+      }
+      .htmx-request .htmx-indicator {
+        display: inline-block;
+      }
+      .htmx-request button {
+        opacity: 0.7;
+      }
+      .spinner {
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        border: 2px solid #fff;
+        border-top-color: transparent;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        margin-left: 8px;
+        vertical-align: middle;
+      }
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+
+      /* Section styling */
+      .section {
+        padding: 16px;
+        background: #fafafa;
+        border-radius: 10px;
+        margin-bottom: 16px;
+      }
+      .section.highlighted {
+        background: #f0f7ff;
+        border: 1px solid #2274ff;
+      }
+
+      /* Hidden elements */
+      .hidden {
+        display: none !important;
       }
     </style>
   </head>
   <body>
     <main class="container">
       <h1>Golf Yardage Book Builder</h1>
-      <p class="helper">Provide place OR lat/lon/radius.</p>
+      <p class="helper">Search for a golf course, preview the available tees, then generate your yardage book PDF.</p>
 
       {% if errors %}
       <div class="error-box">
@@ -95,67 +246,188 @@
       </div>
       {% endif %}
 
-      <form method="post" action="/build">
-        <div>
-          <label for="place">Place</label>
-          <input id="place" name="place" placeholder="Forest Park Golf Course, Baltimore, MD" value="{{ values.get('place', '') }}" />
-        </div>
+      <form method="post" action="/build" id="main-form">
+        <!-- Step 1: Course Search -->
+        <div class="section highlighted">
+          <h2>1. Find Your Course</h2>
+          <div class="search-container">
+            <label for="place">Search for a golf course</label>
+            <input
+              id="place"
+              name="place"
+              type="text"
+              placeholder="Type course name (e.g., Pine Ridge Golf Course, MD)"
+              value="{{ values.get('place', '') }}"
+              autocomplete="off"
+            />
+            <div id="search-results"></div>
+          </div>
 
-        <div class="grid">
-          <div>
-            <label for="lat">Latitude</label>
-            <input id="lat" name="lat" placeholder="39.329" value="{{ values.get('lat', '') }}" />
-          </div>
-          <div>
-            <label for="lon">Longitude</label>
-            <input id="lon" name="lon" placeholder="-76.668" value="{{ values.get('lon', '') }}" />
-          </div>
-          <div>
-            <label for="radius">Radius (m)</label>
-            <input id="radius" name="radius" placeholder="1200" value="{{ values.get('radius', '') }}" />
-          </div>
-        </div>
+          <details style="margin-top: 12px;">
+            <summary style="cursor: pointer; color: #666;">Or enter coordinates manually</summary>
+            <div class="grid" style="margin-top: 12px;">
+              <div>
+                <label for="lat">Latitude</label>
+                <input id="lat" name="lat" placeholder="39.329" value="{{ values.get('lat', '') }}" />
+              </div>
+              <div>
+                <label for="lon">Longitude</label>
+                <input id="lon" name="lon" placeholder="-76.668" value="{{ values.get('lon', '') }}" />
+              </div>
+              <div>
+                <label for="radius">Radius (m)</label>
+                <input id="radius" name="radius" placeholder="1200" value="{{ values.get('radius', '') }}" />
+              </div>
+            </div>
+          </details>
 
-        <div class="grid">
-          <div>
-            <label for="course">Course name</label>
-            <input id="course" name="course" placeholder="Forest Park" value="{{ values.get('course', '') }}" />
-          </div>
-          <div>
-            <label for="paper">Paper</label>
-            <select id="paper" name="paper">
-              {% for option in paper_options %}
-              <option value="{{ option }}" {% if values.get('paper', 'pocket') == option %}selected{% endif %}>
-                {{ option|capitalize }}
-              </option>
-              {% endfor %}
-            </select>
-          </div>
-          <div>
-            <label for="buffer_m">Buffer (m, optional)</label>
-            <input id="buffer_m" name="buffer_m" placeholder="1200" value="{{ values.get('buffer_m', '') }}" />
-          </div>
-        </div>
-
-        <div class="grid">
-          <div>
-            <label for="tee_set">Tee set</label>
-            <input id="tee_set" name="tee_set" placeholder="back" value="{{ values.get('tee_set', 'back') }}" />
-          </div>
-          <div>
-            <label for="tee_label">Tee label (optional)</label>
-            <input id="tee_label" name="tee_label" placeholder="Blue" value="{{ values.get('tee_label', '') }}" />
-          </div>
-          <div>
-            <label for="tee_index">Tee index (optional)</label>
-            <input id="tee_index" name="tee_index" placeholder="0" value="{{ values.get('tee_index', '') }}" />
+          <div class="actions" style="margin-top: 16px;">
+            <button
+              type="button"
+              hx-post="/api/preview"
+              hx-target="#preview-result"
+              hx-include="#place, #lat, #lon, #radius, #buffer_m"
+              hx-indicator="#preview-btn"
+              id="preview-btn"
+            >
+              Preview Tees
+              <span class="htmx-indicator spinner"></span>
+            </button>
           </div>
         </div>
 
+        <!-- Step 2: Tee Preview -->
+        <div id="preview-result">
+          <!-- Tee preview will be loaded here via HTMX -->
+        </div>
+
+        <!-- Step 3: Build Options -->
+        <div class="section">
+          <h2>2. Configure Your Book</h2>
+          <div class="grid">
+            <div>
+              <label for="course">Course name (for cover)</label>
+              <input id="course" name="course" placeholder="Pine Ridge" value="{{ values.get('course', '') }}" />
+            </div>
+            <div>
+              <label for="paper">Paper format</label>
+              <select id="paper" name="paper">
+                {% for option in paper_options %}
+                <option value="{{ option }}" {% if values.get('paper', 'legal') == option %}selected{% endif %}>
+                  {{ option|capitalize }}{% if option == 'legal' %} (two-up, recommended){% elif option == 'pocket' %} (3.5" x 5"){% endif %}
+                </option>
+                {% endfor %}
+              </select>
+            </div>
+            <div>
+              <label for="buffer_m">Search buffer (m)</label>
+              <input id="buffer_m" name="buffer_m" placeholder="1200" value="{{ values.get('buffer_m', '') }}" />
+            </div>
+          </div>
+
+          <div class="grid" style="margin-top: 16px;">
+            <div>
+              <label for="tee_set">Tee set</label>
+              <select id="tee_set" name="tee_set">
+                <option value="back" {% if values.get('tee_set', 'back') == 'back' %}selected{% endif %}>Back (longest)</option>
+                <option value="middle" {% if values.get('tee_set') == 'middle' %}selected{% endif %}>Middle</option>
+                <option value="front" {% if values.get('tee_set') == 'front' %}selected{% endif %}>Front (shortest)</option>
+              </select>
+            </div>
+            <div>
+              <label for="tee_label">Or tee by color/name</label>
+              <input id="tee_label" name="tee_label" placeholder="Blue, White, etc." value="{{ values.get('tee_label', '') }}" />
+            </div>
+            <div>
+              <label for="tee_index">Or tee by index (1-based)</label>
+              <input id="tee_index" name="tee_index" placeholder="1" value="{{ values.get('tee_index', '') }}" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Hidden cache_id field (set by preview) -->
+        <input type="hidden" name="cache_id" id="cache_id" value="" />
+
+        <!-- Submit -->
         <div class="actions">
-          <button type="submit">Build PDF</button>
+          <button type="submit">
+            Build Yardage Book PDF
+          </button>
         </div>
       </form>
     </main>
+
+    <script>
+      // Debounced search
+      let searchTimeout;
+      const placeInput = document.getElementById('place');
+      const searchResults = document.getElementById('search-results');
+
+      placeInput.addEventListener('input', function() {
+        clearTimeout(searchTimeout);
+        const query = this.value.trim();
+
+        if (query.length < 3) {
+          searchResults.innerHTML = '';
+          return;
+        }
+
+        searchTimeout = setTimeout(async () => {
+          try {
+            const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+            const data = await response.json();
+
+            if (data.results && data.results.length > 0) {
+              searchResults.innerHTML = `
+                <ul class="search-dropdown">
+                  ${data.results.map(r => `
+                    <li onclick="selectPlace('${r.place.replace(/'/g, "\\'")}', ${r.lat}, ${r.lon})">
+                      ${r.display_name}
+                    </li>
+                  `).join('')}
+                </ul>
+              `;
+            } else {
+              searchResults.innerHTML = '<div class="no-results">No courses found</div>';
+            }
+          } catch (err) {
+            console.error('Search error:', err);
+          }
+        }, 300);
+      });
+
+      // Select place from dropdown
+      function selectPlace(place, lat, lon) {
+        document.getElementById('place').value = place;
+        document.getElementById('lat').value = lat;
+        document.getElementById('lon').value = lon;
+        searchResults.innerHTML = '';
+
+        // Auto-fill course name from place
+        const courseInput = document.getElementById('course');
+        if (!courseInput.value) {
+          // Extract course name from full place string
+          const name = place.split(',')[0].trim();
+          courseInput.value = name;
+        }
+      }
+
+      // Close dropdown when clicking outside
+      document.addEventListener('click', function(e) {
+        if (!e.target.closest('.search-container')) {
+          searchResults.innerHTML = '';
+        }
+      });
+
+      // Update cache_id when preview loads
+      document.body.addEventListener('htmx:afterSwap', function(e) {
+        if (e.detail.target.id === 'preview-result') {
+          const cacheInput = e.detail.target.querySelector('input[name="cache_id"]');
+          if (cacheInput) {
+            document.getElementById('cache_id').value = cacheInput.value;
+          }
+        }
+      });
+    </script>
   </body>
 </html>

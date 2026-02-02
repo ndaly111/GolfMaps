@@ -1,0 +1,11 @@
+{% if results %}
+<ul class="search-dropdown">
+  {% for result in results %}
+  <li onclick="selectPlace('{{ result.place|e }}', '{{ result.lat }}', '{{ result.lon }}')">
+    {{ result.display_name }}
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<div class="no-results">No courses found. Try a different search.</div>
+{% endif %}

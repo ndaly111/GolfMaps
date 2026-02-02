@@ -2,21 +2,26 @@
 
 from __future__ import annotations
 
+import uuid
 from pathlib import Path
-from tempfile import TemporaryDirectory
+from tempfile import TemporaryDirectory, gettempdir
 from typing import Any
 
-from fastapi import BackgroundTasks, FastAPI, Form, Request
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi import BackgroundTasks, FastAPI, Form, Query, Request
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
-from yardagebook.book import build_book, load_config, merge_config
-from yardagebook.fetch import fetch_course
+from yardagebook.book import build_book, load_config, merge_config, summarize_tees
+from yardagebook.fetch import fetch_course, search_places
 
 app = FastAPI()
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
 
 PAPER_OPTIONS = ["pocket", "legal", "letter"]
+
+# In-memory cache for preview GeoJSON files
+# Maps cache_id -> geojson_path
+PREVIEW_CACHE: dict[str, Path] = {}
 
 
 def _parse_optional_float(value: str | None) -> float | None:
@@ -82,6 +87,107 @@ async def index(request: Request):
     return _render_form(request)
 
 
+# ---------- NEW API ENDPOINTS ----------
+
+@app.get("/api/search")
+async def api_search(q: str = Query("", min_length=2)):
+    """Search for golf courses by name. Returns JSON list of matching places."""
+    try:
+        results = search_places(q, limit=5)
+        if results.empty:
+            return JSONResponse({"results": []})
+
+        items = []
+        for _, row in results.iterrows():
+            name = row.get("display_name") or row.get("name") or "Unknown"
+            lat = row.get("lat") if "lat" in row else row.geometry.centroid.y
+            lon = row.get("lon") if "lon" in row else row.geometry.centroid.x
+            items.append({
+                "display_name": str(name),
+                "lat": float(lat),
+                "lon": float(lon),
+                "place": str(name),
+            })
+        return JSONResponse({"results": items})
+    except Exception as exc:
+        return JSONResponse({"results": [], "error": str(exc)})
+
+
+@app.post("/api/preview", response_class=HTMLResponse)
+async def api_preview(
+    request: Request,
+    place: str = Form(""),
+    lat: str = Form(""),
+    lon: str = Form(""),
+    radius: str = Form(""),
+    buffer_m: str = Form(""),
+):
+    """Fetch course data and return HTML with tee preview table."""
+    place_value = place.strip() or None
+
+    try:
+        lat_value = _parse_optional_float(lat)
+        lon_value = _parse_optional_float(lon)
+        radius_value = _parse_optional_float(radius)
+        buffer_value = _parse_optional_float(buffer_m)
+    except ValueError:
+        return templates.TemplateResponse(
+            "partials/preview_error.html",
+            {"request": request, "error": "Invalid numeric values provided."}
+        )
+
+    if not place_value and (lat_value is None or lon_value is None):
+        return templates.TemplateResponse(
+            "partials/preview_error.html",
+            {"request": request, "error": "Please enter a course name or coordinates."}
+        )
+
+    # Generate unique cache ID and path
+    cache_id = str(uuid.uuid4())
+    geojson_path = Path(gettempdir()) / f"preview_{cache_id}.geojson"
+
+    try:
+        fetch_course(
+            place=place_value,
+            lat=lat_value,
+            lon=lon_value,
+            radius_m=radius_value or 1200,
+            output=str(geojson_path),
+            buffer_m=buffer_value,
+            tags_raw=None,
+        )
+    except Exception as exc:
+        return templates.TemplateResponse(
+            "partials/preview_error.html",
+            {"request": request, "error": str(exc)}
+        )
+
+    # Store in cache
+    PREVIEW_CACHE[cache_id] = geojson_path
+
+    # Get tee summary
+    try:
+        config = load_config(None)
+        tee_lines = summarize_tees(str(geojson_path), config)
+    except Exception as exc:
+        return templates.TemplateResponse(
+            "partials/preview_error.html",
+            {"request": request, "error": f"Could not analyze tees: {exc}"}
+        )
+
+    return templates.TemplateResponse(
+        "partials/preview_success.html",
+        {
+            "request": request,
+            "tee_lines": tee_lines,
+            "cache_id": cache_id,
+            "hole_count": len(tee_lines),
+        }
+    )
+
+
+# ---------- MODIFIED BUILD ENDPOINT ----------
+
 @app.post("/build")
 async def build(
     request: Request,
@@ -96,6 +202,7 @@ async def build(
     lat: str = Form(""),
     lon: str = Form(""),
     radius: str = Form(""),
+    cache_id: str = Form(""),  # NEW: optional cache_id from preview
 ):
     errors: list[str] = []
     paper = paper.strip() or "pocket"
@@ -103,6 +210,7 @@ async def build(
         errors.append("Select a valid paper size.")
     place_value = place.strip() or None
     course_value = course.strip() or "Yardage Book"
+    cache_id_value = cache_id.strip() or None
     values = {
         "place": place,
         "course": course,
@@ -136,27 +244,40 @@ async def build(
         errors.append("Latitude, longitude, and radius must be numbers.")
         lat_value = lon_value = radius_value = None
 
-    if not place_value and (lat_value is None or lon_value is None or radius_value is None):
-        errors.append("Provide a place or a latitude/longitude/radius combination.")
+    # Check if we have cached data or need location info
+    if not cache_id_value:
+        if not place_value and (lat_value is None or lon_value is None or radius_value is None):
+            errors.append("Provide a place or a latitude/longitude/radius combination.")
 
     if errors:
         return _render_form(request, errors=errors, values=values)
 
     temp_dir = TemporaryDirectory()
     background_tasks.add_task(temp_dir.cleanup)
-    geojson_path = Path(temp_dir.name) / "course.geojson"
     pdf_path = Path(temp_dir.name) / "book.pdf"
 
+    # Use cached GeoJSON if available, otherwise fetch fresh
+    if cache_id_value and cache_id_value in PREVIEW_CACHE:
+        geojson_path = PREVIEW_CACHE[cache_id_value]
+        # Clean up cache entry after use
+        del PREVIEW_CACHE[cache_id_value]
+    else:
+        geojson_path = Path(temp_dir.name) / "course.geojson"
+        try:
+            fetch_course(
+                place=place_value,
+                lat=lat_value,
+                lon=lon_value,
+                radius_m=radius_value,
+                output=str(geojson_path),
+                buffer_m=buffer_value,
+                tags_raw=None,
+            )
+        except Exception as exc:
+            errors.append(str(exc))
+            return _render_form(request, errors=errors, values=values)
+
     try:
-        fetch_course(
-            place=place_value,
-            lat=lat_value,
-            lon=lon_value,
-            radius_m=radius_value,
-            output=str(geojson_path),
-            buffer_m=buffer_value,
-            tags_raw=None,
-        )
         defaults = load_config(None)
         overrides, two_up = _build_overrides(
             paper=paper,
