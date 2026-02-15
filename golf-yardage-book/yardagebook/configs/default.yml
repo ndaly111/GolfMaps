@@ -20,9 +20,9 @@ colors:
   marker: "#1f1f1f"
 tolerances:
   tee_radius_m: 120
-  fairway_tol_m: 60
-  fairway_proxy_halfwidth_m: 25
-  hazard_tol_m: 80
+  fairway_tol_m: 100  # Wider tolerance to capture more fairway sections
+  fairway_proxy_halfwidth_m: 45  # 90m total width (~98 yards) - realistic fairway
+  hazard_tol_m: 50  # Reduced from 80 to show less background water
   green_proxy_radius_m: 18
   tee_proxy_radius_m: 12
   green_margin_m: 18
