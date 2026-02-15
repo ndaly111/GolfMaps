@@ -85,24 +85,45 @@ def _draw_grid(ax, bounds, step_m: float, color: str):
         y += step_m
 
 
-def _draw_markers(
+def _draw_drive_distances(
     ax,
-    line: LineString,
-    step_yards: float,
+    tee_point: Point,
+    green_point: Point,
+    distances_yards: list[int],
     color: str,
-    start_offset_m: float = 0.0,
     font_size: int = 7,
 ):
-    step_m = step_yards / geom.YARDS_PER_METER
-    distance = start_offset_m + step_m
-    idx = 1
-    while distance <= line.length:
-        point = line.interpolate(distance)
-        yardage = int(step_yards * idx)
-        ax.plot(point.x, point.y, marker="o", color=color, markersize=3)
-        ax.text(point.x + 2, point.y, f"{yardage}", fontsize=font_size, color=color)
-        idx += 1
-        distance += step_m
+    """Draw straight-line carry distances from tee (how golfers actually measure)."""
+    from shapely.geometry import Point
+
+    # Calculate direction from tee to green
+    dx = green_point.x - tee_point.x
+    dy = green_point.y - tee_point.y
+    total_dist = ((dx**2 + dy**2)**0.5)
+
+    if total_dist < 1:
+        return
+
+    # Unit vector toward green
+    ux = dx / total_dist
+    uy = dy / total_dist
+
+    # Mark each drive distance as straight-line carry from tee
+    for yards in distances_yards:
+        carry_m = yards / geom.YARDS_PER_METER
+        # Point at straight-line distance from tee toward green
+        marker_x = tee_point.x + (ux * carry_m)
+        marker_y = tee_point.y + (uy * carry_m)
+
+        ax.plot(marker_x, marker_y, marker="o", color=color, markersize=4, zorder=5)
+        ax.text(
+            marker_x + 3, marker_y + 3,
+            f"{yards}",
+            fontsize=font_size,
+            color=color,
+            weight="bold",
+            zorder=5
+        )
 
 
 def _draw_notes_table(ax, origin, size, font_size: int):
@@ -231,12 +252,17 @@ def _render_fairway_view(ax, hole, geoms: dict, config: dict):
     for water in geoms["waters"]:
         _plot_geometry(ax, water, facecolor=config["colors"]["water"], edgecolor="none")
     _plot_geometry(ax, geoms["line"], color=config["colors"]["line"], linewidth=1.0)
-    _draw_markers(
+
+    # Draw drive distance markers (straight-line carry from tee)
+    line_coords = list(geoms["line"].coords)
+    tee_point = Point(line_coords[0])
+    green_point = Point(line_coords[-1])
+    _draw_drive_distances(
         ax,
-        geoms["line"],
-        config["tolerances"]["marker_step_yards"],
+        tee_point,
+        green_point,
+        [200, 250, 275],  # Key drive distances for golfers
         config["colors"]["marker"],
-        start_offset_m=hole.selected_tee.project_m,
         font_size=config["page"]["marker_font_size"],
     )
     ax.text(
