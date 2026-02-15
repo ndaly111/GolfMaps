@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 import uuid
 from pathlib import Path
 from tempfile import TemporaryDirectory, gettempdir
@@ -19,9 +20,43 @@ templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
 
 PAPER_OPTIONS = ["pocket", "legal", "letter"]
 
-# In-memory cache for preview GeoJSON files
-# Maps cache_id -> geojson_path
-PREVIEW_CACHE: dict[str, Path] = {}
+# In-memory cache for preview GeoJSON files with TTL
+# Maps cache_id -> (geojson_path, timestamp)
+PREVIEW_CACHE: dict[str, tuple[Path, float]] = {}
+CACHE_TTL_SECONDS = 3600  # 1 hour
+MAX_CACHE_SIZE = 100  # Maximum number of cached entries
+
+
+def _cleanup_old_cache_entries():
+    """Remove expired cache entries and their temp files."""
+    now = time.time()
+    expired_keys = []
+    for cache_id, (path, timestamp) in PREVIEW_CACHE.items():
+        if now - timestamp > CACHE_TTL_SECONDS:
+            expired_keys.append(cache_id)
+            # Clean up temp file
+            try:
+                if path.exists():
+                    path.unlink()
+            except Exception:
+                pass  # Best effort cleanup
+    for key in expired_keys:
+        del PREVIEW_CACHE[key]
+
+
+def _enforce_cache_limit():
+    """Remove oldest entries if cache exceeds max size."""
+    if len(PREVIEW_CACHE) <= MAX_CACHE_SIZE:
+        return
+    # Sort by timestamp and remove oldest entries
+    sorted_items = sorted(PREVIEW_CACHE.items(), key=lambda x: x[1][1])
+    for cache_id, (path, _) in sorted_items[: len(PREVIEW_CACHE) - MAX_CACHE_SIZE]:
+        try:
+            if path.exists():
+                path.unlink()
+        except Exception:
+            pass
+        del PREVIEW_CACHE[cache_id]
 
 
 def _parse_optional_float(value: str | None) -> float | None:
@@ -136,10 +171,10 @@ async def api_preview(
             {"request": request, "error": "Invalid numeric values provided."}
         )
 
-    if not place_value and (lat_value is None or lon_value is None):
+    if not place_value and (lat_value is None or lon_value is None or radius_value is None):
         return templates.TemplateResponse(
             "partials/preview_error.html",
-            {"request": request, "error": "Please enter a course name or coordinates."}
+            {"request": request, "error": "Please enter a course name or coordinates with radius."}
         )
 
     # Generate unique cache ID and path
@@ -162,8 +197,10 @@ async def api_preview(
             {"request": request, "error": str(exc)}
         )
 
-    # Store in cache
-    PREVIEW_CACHE[cache_id] = geojson_path
+    # Store in cache with timestamp
+    _cleanup_old_cache_entries()
+    _enforce_cache_limit()
+    PREVIEW_CACHE[cache_id] = (geojson_path, time.time())
 
     # Get tee summary
     try:
@@ -257,8 +294,11 @@ async def build(
     pdf_path = Path(temp_dir.name) / "book.pdf"
 
     # Use cached GeoJSON if available, otherwise fetch fresh
+    cached_file_to_cleanup = None
     if cache_id_value and cache_id_value in PREVIEW_CACHE:
-        geojson_path = PREVIEW_CACHE[cache_id_value]
+        geojson_path, _ = PREVIEW_CACHE[cache_id_value]
+        # Mark for cleanup after use
+        cached_file_to_cleanup = geojson_path
         # Clean up cache entry after use
         del PREVIEW_CACHE[cache_id_value]
     else:
@@ -295,8 +335,19 @@ async def build(
             debug=False,
         )
     except Exception as exc:
+        # Clean up cached file on error
+        if cached_file_to_cleanup:
+            try:
+                if cached_file_to_cleanup.exists():
+                    cached_file_to_cleanup.unlink()
+            except Exception:
+                pass  # Best effort cleanup
         errors.append(str(exc))
         return _render_form(request, errors=errors, values=values)
+
+    # Schedule cleanup of cached file after successful build
+    if cached_file_to_cleanup:
+        background_tasks.add_task(lambda: cached_file_to_cleanup.unlink(missing_ok=True))
 
     safe_course = course_value.strip().replace(" ", "_") or "yardage_book"
     filename = f"{safe_course}_{paper}.pdf"

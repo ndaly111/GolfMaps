@@ -45,10 +45,13 @@ def _buffer_polygon(polygon, buffer_m: float):
 def _place_geometry_to_polygon(geometry, buffer_m: float | None):
     if buffer_m is not None and buffer_m <= 0:
         raise ValueError("buffer_m must be positive when provided.")
+    # Always buffer polygon geometries to ensure they contain golf features
+    # Geocoded polygons are often too tight to capture course features
     if geometry.geom_type in ("Polygon", "MultiPolygon"):
-        if buffer_m:
-            return _buffer_polygon(geometry, buffer_m)
-        return geometry
+        if buffer_m is None:
+            buffer_m = 200  # Default 200m buffer for polygons
+        return _buffer_polygon(geometry, buffer_m)
+    # For Point geometries, use larger default buffer
     if buffer_m is None:
         buffer_m = 1200
     try:
@@ -118,7 +121,61 @@ def fetch_course(
 
 
 def search_places(query: str, limit: int = 5) -> gpd.GeoDataFrame:
-    results = ox.geocode_to_gdf(query)
-    if len(results) > limit:
-        return results.head(limit)
-    return results
+    """Search for golf courses by name using Nominatim."""
+    import requests
+    from shapely.geometry import Point
+
+    # Use Nominatim API directly with golf course filter
+    url = "https://nominatim.openstreetmap.org/search"
+
+    # First try searching with "golf" appended if not already present
+    search_query = query
+    if "golf" not in query.lower():
+        search_query = f"{query} golf"
+
+    params = {
+        "q": search_query,
+        "format": "json",
+        "limit": limit,
+        "addressdetails": 1,
+    }
+    headers = {"User-Agent": "GolfYardageBook/1.0"}
+
+    try:
+        resp = requests.get(url, params=params, headers=headers, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception:
+        # Fallback to original osmnx method
+        results = ox.geocode_to_gdf(query)
+        if len(results) > limit:
+            return results.head(limit)
+        return results
+
+    if not data:
+        # Try without "golf" appended as fallback
+        params["q"] = query
+        try:
+            resp = requests.get(url, params=params, headers=headers, timeout=10)
+            data = resp.json()
+        except Exception:
+            return gpd.GeoDataFrame()
+
+    if not data:
+        return gpd.GeoDataFrame()
+
+    # Convert to GeoDataFrame
+    rows = []
+    for item in data:
+        rows.append({
+            "display_name": item.get("display_name", ""),
+            "name": item.get("name", item.get("display_name", "")),
+            "lat": float(item.get("lat", 0)),
+            "lon": float(item.get("lon", 0)),
+            "geometry": Point(float(item.get("lon", 0)), float(item.get("lat", 0))),
+            "type": item.get("type", ""),
+            "class": item.get("class", ""),
+        })
+
+    gdf = gpd.GeoDataFrame(rows, crs="EPSG:4326")
+    return gdf

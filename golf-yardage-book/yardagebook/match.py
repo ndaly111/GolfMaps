@@ -64,9 +64,18 @@ def _nearest_geometry(gdf: gpd.GeoDataFrame, target) -> object | None:
 
 
 def _value_or_none(row, key: str) -> str | None:
+    import pandas as pd
     if key not in row or row[key] in (None, ""):
         return None
-    return str(row[key])
+    value = row[key]
+    # Handle pandas NaN values
+    if pd.isna(value):
+        return None
+    str_value = str(value)
+    # Catch string "nan" from float conversion
+    if str_value.lower() in ("nan", "none", "null"):
+        return None
+    return str_value
 
 
 def _resolve_par(row) -> int | None:
@@ -95,8 +104,8 @@ def _select_tee(tees: list[TeeOption], config: MatchConfig) -> TeeOption:
             if label_lower in option.label.lower():
                 return option
     if config.tee_index is not None:
-        idx = max(1, config.tee_index) - 1
-        idx = min(idx, len(tees) - 1)
+        # Convert 1-based index to 0-based and clamp to valid range
+        idx = max(0, min(config.tee_index - 1, len(tees) - 1))
         return tees[idx]
     if config.tee_set == "front":
         return tees[-1]
