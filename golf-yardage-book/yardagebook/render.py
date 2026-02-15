@@ -204,12 +204,14 @@ def _prepare_geoms(hole) -> dict:
 def _render_fairway_view(ax, hole, geoms: dict, config: dict):
     ax.set_aspect("equal")
     ax.axis("off")
-    union_parts = [geoms["line"], geoms["green"], geoms["fairway"]]
-    union_parts += geoms["tees"] + geoms["bunkers"] + geoms["waters"]
-    union_geom = geom.buffered_union([g for g in union_parts if g is not None])
-    if union_geom is None:
+    # Base view bounds on playing corridor only (line + fairway + green + tees)
+    # Don't include water/bunkers as they can be huge and zoom out too far
+    bounds_parts = [geoms["line"], geoms["green"], geoms["fairway"]]
+    bounds_parts += geoms["tees"]
+    bounds_geom = geom.buffered_union([g for g in bounds_parts if g is not None])
+    if bounds_geom is None:
         return
-    _set_bounds(ax, union_geom, config["tolerances"]["fairway_margin_m"])
+    _set_bounds(ax, bounds_geom, config["tolerances"]["fairway_margin_m"])
     _plot_geometry(ax, geoms["fairway"], facecolor=config["colors"]["fairway"], edgecolor="none")
     _plot_geometry(ax, geoms["green"], facecolor=config["colors"]["green"], edgecolor="none")
     selected_idx = hole.tees.index(hole.selected_tee)
